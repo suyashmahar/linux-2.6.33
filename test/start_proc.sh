@@ -13,5 +13,5 @@ if [ $? -eq 0 ]; then
     DURATION=$((SECONDS - START));
     /bin/echo "Total time : ${DURATION}s";
 else
-    echo "wait failed"
+    /bin/echo "wait failed"
 fi
