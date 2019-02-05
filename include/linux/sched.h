@@ -1,6 +1,10 @@
 #ifndef _LINUX_SCHED_H
 #define _LINUX_SCHED_H
 
+/**********************************************************************
+ * All modifications are followed by comment -  "SCHED_BACKGROUND head"
+***********************************************************************/
+
 /*
  * cloning flags:
  */
@@ -37,6 +41,8 @@
 #define SCHED_BATCH		3
 /* SCHED_ISO: reserved but not implemented yet */
 #define SCHED_IDLE		5
+/* SCHED_BACKGROUND head */
+#define SCHED_BACKGROUND        6
 
 #ifdef __KERNEL__
 
@@ -88,6 +94,8 @@ struct sched_param {
 #include <linux/hrtimer.h>
 #include <linux/task_io_accounting.h>
 #include <linux/kobject.h>
+
+// #include <linux/latencytop.h>
 
 #include <asm/processor.h>
 
@@ -847,6 +855,11 @@ struct sched_class {
 	void (*set_curr_task) (struct rq *rq);
 	void (*task_tick) (struct rq *rq, struct task_struct *p);
 	void (*task_new) (struct rq *rq, struct task_struct *p);
+
+/* SCHED_BACKGROUND head */
+#ifdef CONFIG_FAIR_GROUP_SCHED
+	void (*moved_group) (struct task_struct *p);
+#endif
 };
 
 struct load_weight {
@@ -1178,6 +1191,12 @@ struct task_struct {
 	int make_it_fail;
 #endif
 	struct prop_local_single dirties;
+
+/* SCHED_BACKGROUND head */
+#ifdef CONFIG_LATENCYTOP
+	int latency_record_count;
+	struct latency_record latency_record[LT_SAVECOUNT];
+#endif
 };
 
 /*

@@ -24,6 +24,11 @@
  *  2007-07-01  Group scheduling enhancements by Srivatsa Vaddagiri
  */
 
+/**********************************************************************
+ * All modifications are followed by comment -  "SCHED_BACKGROUND head"
+***********************************************************************/
+
+
 #include <linux/mm.h>
 #include <linux/module.h>
 #include <linux/nmi.h>
@@ -798,6 +803,10 @@ static inline void update_load_sub(struct load_weight *lw, unsigned long dec)
 #define WEIGHT_IDLEPRIO		2
 #define WMULT_IDLEPRIO		(1 << 31)
 
+/* SCHED_BACKGROUND head */
+#define WEIGHT_BACKGROUNDPRIO         1
+#define WMULT_BACKGROUNDPRIO          (1 << 31)
+
 /*
  * Nice levels are multiplicative, with a gentle 10% change for every
  * nice level changed. I.e. when a CPU-bound task goes from nice 0 to
@@ -933,6 +942,18 @@ static void set_load_weight(struct task_struct *p)
 		p->se.load.weight = WEIGHT_IDLEPRIO;
 		p->se.load.inv_weight = WMULT_IDLEPRIO;
 		return;
+	}
+
+
+	/* SCHED_BACKGROUND head */
+	/*
+	 * SCHED_BACKGROUND task gets less than miniaml weight:
+	 */
+
+	if (p->policy == SCHED_BACKGROUND) {
+	  p->se.load.weight = WEIGHT_BACKGROUNDPRIO;
+	  p->se.load.inv_weight = WMULT_BACKGROUNDPRIO;
+	  return;
 	}
 
 	p->se.load.weight = prio_to_weight[p->static_prio - MAX_RT_PRIO];
@@ -4226,6 +4247,8 @@ __setscheduler(struct rq *rq, struct task_struct *p, int policy, int prio)
 	BUG_ON(p->se.on_rq);
 
 	p->policy = policy;
+
+	/* SCHED_BACKGROUND head */
 	switch (p->policy) {
 	case SCHED_NORMAL:
 	case SCHED_BATCH:
@@ -4236,7 +4259,11 @@ __setscheduler(struct rq *rq, struct task_struct *p, int policy, int prio)
 	case SCHED_RR:
 		p->sched_class = &rt_sched_class;
 		break;
+	case SCHED_BACKGROUND:
+	  p->sched_class = &fair_sched_class;
+	  break;
 	}
+
 
 	p->rt_priority = prio;
 	p->normal_prio = normal_prio(p);
@@ -4264,11 +4291,12 @@ int sched_setscheduler(struct task_struct *p, int policy,
 	BUG_ON(in_interrupt());
 recheck:
 	/* double check policy once rq lock held */
+	/* SCHED_BACKGROUND head */
 	if (policy < 0)
 		policy = oldpolicy = p->policy;
 	else if (policy != SCHED_FIFO && policy != SCHED_RR &&
 			policy != SCHED_NORMAL && policy != SCHED_BATCH &&
-			policy != SCHED_IDLE)
+			policy != SCHED_IDLE && policy != SCHED_BACKGROUND)
 		return -EINVAL;
 	/*
 	 * Valid priorities for SCHED_FIFO and SCHED_RR are
@@ -4309,6 +4337,15 @@ recheck:
 		 */
 		if (p->policy == SCHED_IDLE && policy != SCHED_IDLE)
 			return -EPERM;
+
+		/*
+		 * Like positive nice levels, dont allow tasks to
+		 * move out of SCHED_BACKGROUND either:
+		 */
+		/* SCHED_BACKGROUND head */
+
+		if (p->policy == SCHED_BACKGROUND && policy != SCHED_BACKGROUND)
+		  return -EPERM;
 
 		/* can't change other user's priorities */
 		if ((current->euid != p->euid) &&
@@ -4794,6 +4831,7 @@ asmlinkage long sys_sched_get_priority_max(int policy)
 {
 	int ret = -EINVAL;
 
+	/* SCHED_BACKGROUND head */
 	switch (policy) {
 	case SCHED_FIFO:
 	case SCHED_RR:
@@ -4804,6 +4842,9 @@ asmlinkage long sys_sched_get_priority_max(int policy)
 	case SCHED_IDLE:
 		ret = 0;
 		break;
+	case SCHED_BACKGROUND:
+	  ret = 0;
+	  break;
 	}
 	return ret;
 }
@@ -4819,6 +4860,7 @@ asmlinkage long sys_sched_get_priority_min(int policy)
 {
 	int ret = -EINVAL;
 
+	/* SCHED_BACKGROUND head */
 	switch (policy) {
 	case SCHED_FIFO:
 	case SCHED_RR:
@@ -4828,6 +4870,8 @@ asmlinkage long sys_sched_get_priority_min(int policy)
 	case SCHED_BATCH:
 	case SCHED_IDLE:
 		ret = 0;
+	case SCHED_BACKGROUND:
+	  ret =0;
 	}
 	return ret;
 }
@@ -7117,6 +7161,12 @@ void sched_move_task(struct task_struct *tsk)
 	}
 
 	set_task_cfs_rq(tsk, task_cpu(tsk));
+
+/* SCHED_BACKGROUND head */
+#ifdef CONFIG_FAIR_GROUP_SCHED
+	if (tsk->sched_class->moved_group)
+		tsk->sched_class->moved_group(tsk);
+#endif
 
 	if (on_rq) {
 		if (unlikely(running))
